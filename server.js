@@ -21,25 +21,13 @@ function sendFile(fileLoc, res){
 	stream.pipe(res);
 }
 
-function apiReq(path, res){
-	u = new URL(path, 'http://${config.server.hostname}');
-	if(u.pathname == '/api/recent')apiRecent(res);
-	else{
-		res.setHeader('Content-Type', 'text/plain');
-		res.end('api req ' + u);
-	}
+function send400err(str, res){
+	res.setHeader('Content-Type', 'text/plain');
+	res.writeHead(400, 'error');
+	res.end(str);
 }
 
-function apiRecent(res){
-	let obj = {//test object
-		noiseReading : [
-		],
-		motionReading : [
-		]};
-	const q =
-		'from(bucket: "'+config.influxDB.bucket+'")\
-		|> range(start: 0)\
-		|> last()';
+function makeObserver(res, obj){
 	const observer = {
 		next(row, tableMeta) {
 			const o = tableMeta.toObject(row)
@@ -51,15 +39,54 @@ function apiRecent(res){
 		},
 		error(err){
 			console.log(err);
-			res.writeHead(400, 'error');
-			res.end('400');
+			send400err("influxDB query error", res);
 		}
 	};
+	return observer;
+}
+
+function apiReq(path, res){
+	u = new URL(path, `http://${config.server.hostname}`);
+	//console.log(u);
+	if(u.pathname == '/api/recent')apiRecent(res);
+	else if(u.pathname == '/api/since')apiSince(u, res);
+	else{
+		send400err(`Unrecognised endpoint: ${u}`, res);
+	}
+}
+
+function apiRecent(res){
+	let obj = {//test object
+		noiseReading : [
+		],
+		motionReading : [
+		]};
+	const q =
+		`from(bucket: "${config.influxDB.bucket}")
+		|> range(start: 0)
+		|> last()`;
+	const observer = makeObserver(res, obj);
 	queryApi.queryRows(q, observer);
 }
 
 function apiSince(u, res){
-	
+	/********************************************
+	NOTE: the way this query is being constructed
+	is NOT SECURE. The inputs are not verified &
+	are vunrable to a code injection attack.
+	********************************************/
+	let q = 
+		`from(bucket: "${config.influxDB.bucket}")
+		|> range(start: ${u.searchParams.get('t')})`;
+	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
+	//console.log(q)
+	let obj = {//test object
+		noiseReading : [
+		],
+		motionReading : [
+		]};
+	const observer = makeObserver(res, obj);
+	queryApi.queryRows(q, observer);
 }
 
 const server = http.createServer((req, res) => {
