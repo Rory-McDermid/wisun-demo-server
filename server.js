@@ -50,6 +50,7 @@ function apiReq(path, res){
 	//console.log(u);
 	if(u.pathname == '/api/recent')apiRecent(res);
 	else if(u.pathname == '/api/since')apiSince(u, res);
+	else if(u.pathname == '/api/noiseReading/average')apiNoiseAverage(u, res);
 	else{
 		send400err(`Unrecognised endpoint: ${u}`, res);
 	}
@@ -98,6 +99,38 @@ function apiSince(u, res){
 	}
 	//console.log(q);
 	const observer = makeObserver(res, obj);
+	queryApi.queryRows(q, observer);
+}
+
+function apiNoiseAverage(u, res){
+	/********************************************
+	NOTE: the way this query is being constructed
+	is NOT SECURE. The inputs are not verified &
+	are vunrable to a code injection attack.
+	********************************************/
+	let q =
+		`from(bucket: "${config.influxDB.bucket}")
+		|> range(start: ${u.searchParams.get('start')}, stop:${u.searchParams.has('stop')?u.searchParams.get('stop'):'now()'})
+		|> filter(fn: (r) => r._measurement == "noiseReading")`;
+	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
+	q += `
+		|> keep(columns: ["_value"])
+		|> mean()`;
+	let obj = {};
+	const observer = {
+		next(row, tableMeta) {
+			const o = tableMeta.toObject(row)
+			obj.value = o._value;
+		},
+		complete(){
+			res.setHeader('Content-Type', 'aplication/json');
+			res.end(JSON.stringify(obj));
+		},
+		error(err){
+			console.log(err);
+			send400err("influxDB query error", res);
+		}
+	}
 	queryApi.queryRows(q, observer);
 }
 
