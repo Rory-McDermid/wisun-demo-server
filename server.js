@@ -75,16 +75,28 @@ function apiSince(u, res){
 	is NOT SECURE. The inputs are not verified &
 	are vunrable to a code injection attack.
 	********************************************/
+	let obj;
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
 		|> range(start: ${u.searchParams.get('t')})`;
 	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
-	//console.log(q)
-	let obj = {//test object
-		noiseReading : [
-		],
-		motionReading : [
-		]};
+	if(u.searchParams.has('r')){
+		if(u.searchParams.get('r')=='noiseReading'){
+			q += `|> filter(fn: (r) => r._measurement == "noiseReading")`;
+			obj = {noiseReading : []};
+		} else if(u.searchParams.get('r')=='motionReading'){
+			q += `|> filter(fn: (r) => r._measurement == "motionReading")`;
+			obj = {motionReading : []};
+		} else {
+			send400err('invalid reading paramenter', res);
+			return;
+		}
+	} else {
+		obj = {
+			noiseReading : [],
+			motionReading : []};
+	}
+	//console.log(q);
 	const observer = makeObserver(res, obj);
 	queryApi.queryRows(q, observer);
 }
