@@ -82,7 +82,7 @@ function apiSince(u, res){
 	let obj;
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
-		|> range(start: ${u.searchParams.get('t')})`;
+		|> range(start: time(v: "${u.searchParams.get('t')}")`;
 	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
 	if(u.searchParams.has('r')){
 		if(u.searchParams.get('r')=='noiseReading'){
@@ -113,12 +113,13 @@ function apiNoiseAverage(u, res){
 	********************************************/
 	let q =
 		`from(bucket: "${config.influxDB.bucket}")
-		|> range(start: ${u.searchParams.get('start')}, stop:${u.searchParams.has('stop')?u.searchParams.get('stop'):'now()'})
+		|> range(start: time(v: "${u.searchParams.get('start')}"), stop:${u.searchParams.has('stop')?'time(v: "'+u.searchParams.get('stop')+'")':'now()'})
 		|> filter(fn: (r) => r._measurement == "noiseReading")`;
 	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
 	q += `
 		|> keep(columns: ["_value"])
 		|> mean()`;
+	console.log(q);
 	let obj = {};
 	const observer = {
 		next(row, tableMeta) {
