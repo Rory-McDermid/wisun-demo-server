@@ -49,13 +49,33 @@ function makeObserver(res, obj){
 	return observer;
 }
 
+function makeValueObserver(res, obj){
+	return {
+		next(row, tableMeta) {
+			const o = tableMeta.toObject(row)
+			obj.value = o._value;
+			//console.log(o);
+		},
+		complete(){
+			res.setHeader('Content-Type', 'aplication/json');
+			res.end(JSON.stringify(obj));
+		},
+		error(err){
+			console.log(err);
+			send400err("influxDB query error", res);
+		}
+	};
+}
+
 function apiReq(path, res){
 	u = new URL(path, `http://${config.server.hostname}`);
+	res.setHeader('Access-Control-Allow-Origin', '*');
 	//console.log(u);
 	//call function for specific api endpoints
 	if(u.pathname == '/api/recent')apiRecent(res);
 	else if(u.pathname == '/api/since')apiSince(u, res);
 	else if(u.pathname == '/api/noiseReading/average')apiNoiseAverage(u, res);
+	else if(u.pathname == '/api/noiseReading/max')apiNoiseMax(u, res);
 	else{
 		send400err(`Unrecognised endpoint: ${u}`, res);
 	}
@@ -119,22 +139,28 @@ function apiNoiseAverage(u, res){
 	q += `
 		|> keep(columns: ["_value"])
 		|> mean()`;
-	console.log(q);
+	//console.log(q);
 	let obj = {};
-	const observer = {
-		next(row, tableMeta) {
-			const o = tableMeta.toObject(row)
-			obj.value = o._value;
-		},
-		complete(){
-			res.setHeader('Content-Type', 'aplication/json');
-			res.end(JSON.stringify(obj));
-		},
-		error(err){
-			console.log(err);
-			send400err("influxDB query error", res);
-		}
-	}
+	const observer = makeValueObserver(res, obj);
+	queryApi.queryRows(q, observer);
+}
+
+function apiNoiseMax(u, res){
+	/********************************************
+	NOTE: the way this query is being constructed
+	is NOT SECURE. The inputs are not verified &
+	are vulnerable to a code injection attack.
+	********************************************/
+	let q =
+		`from(bucket: "${config.influxDB.bucket}")
+		|> range(start: time(v: "${u.searchParams.get('start')}"), stop:${u.searchParams.has('stop')?'time(v: "'+u.searchParams.get('stop')+'")':'now()'})
+		|> filter(fn: (r) => r._measurement == "noiseReading")`;
+	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
+	q += `
+		|> keep(columns: ["_value"])
+		|> max()`;
+	let obj = {};
+	const observer = makeValueObserver(res, obj);
 	queryApi.queryRows(q, observer);
 }
 
