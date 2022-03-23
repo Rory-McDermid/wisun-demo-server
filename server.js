@@ -164,10 +164,17 @@ function apiNoiseMax(u, res){
 	queryApi.queryRows(q, observer);
 }
 
+function optionsResponse(res){
+	res.setHeader('Access-Control-Allow-Origin','*');
+	res.setHeader('Access-Control-Allow-Methods','*');
+	res.end();
+}
+
 //create server, for each request call either sendfile(filename, res) or apiReq(url, res)
 const server = http.createServer((req, res) => {
 	res.statusCode = 200;
-	if(req.url == '/')sendFile('index.html', res);
+	if(req.method == 'OPTIONS')optionsResponse(res);
+	else if(req.url == '/')sendFile('index.html', res);
 	else if(req.url.startsWith('/api/'))apiReq(req.url, res);
 	else{
 		sendFile('static' + req.url, res);
