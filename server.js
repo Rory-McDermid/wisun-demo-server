@@ -73,6 +73,7 @@ function apiReq(path, res){
 	//console.log(u);
 	//call function for specific api endpoints
 	if(u.pathname == '/api/recent')apiRecent(res);
+	else if(u.pathname == '/api/recent/noiseReading')apiRecentNoise(res);
 	else if(u.pathname == '/api/since')apiSince(u, res);
 	else if(u.pathname == '/api/noiseReading/average')apiNoiseAverage(u, res);
 	else if(u.pathname == '/api/noiseReading/max')apiNoiseMax(u, res);
@@ -93,6 +94,25 @@ function apiRecent(res){
 	queryApi.queryRows(q, observer);
 }
 
+//not fully working
+function apiRecentNoise(res){
+	let obj = {noiseReading : []};
+	let q = 
+		`from(bucket: "${config.influxDB.bucket}")
+		|> range(start: 0)
+		|> filter(fn: (r) => r._measurement == "noiseReading")`;
+	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
+	if(u.searchParams.has('a'))q += `|> filter(fn: (r) => r._value > ${u.searchParams.get('a')})`;
+	if(u.searchParams.has('b'))q += `|> filter(fn: (r) => r._value < ${u.searchParams.get('b')})`;
+	q += `|> last()`;
+	const observer = makeObserver(res, obj);
+	queryApi.queryRows(q, observer);
+}
+
+function apiRecentMotion(res){
+	
+}
+
 function apiSince(u, res){
 	/********************************************
 	NOTE: the way this query is being constructed
@@ -102,7 +122,7 @@ function apiSince(u, res){
 	let obj;
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
-		|> range(start: time(v: "${u.searchParams.get('t')}")`;
+		|> range(start: time(v: "${u.searchParams.get('t')}"))`;
 	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
 	if(u.searchParams.has('r')){
 		if(u.searchParams.get('r')=='noiseReading'){
@@ -120,7 +140,7 @@ function apiSince(u, res){
 			noiseReading : [],
 			motionReading : []};
 	}
-	//console.log(q);
+	console.log(q);
 	const observer = makeObserver(res, obj);
 	queryApi.queryRows(q, observer);
 }
