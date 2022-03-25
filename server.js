@@ -74,6 +74,7 @@ function apiReq(path, res){
 	//call function for specific api endpoints
 	if(u.pathname == '/api/recent')apiRecent(res);
 	else if(u.pathname == '/api/recent/noiseReading')apiRecentNoise(res);
+	else if(u.pathname == '/api/recent/motionReading')apiRecentMotion(res);
 	else if(u.pathname == '/api/since')apiSince(u, res);
 	else if(u.pathname == '/api/noiseReading/average')apiNoiseAverage(u, res);
 	else if(u.pathname == '/api/noiseReading/max')apiNoiseMax(u, res);
@@ -94,8 +95,12 @@ function apiRecent(res){
 	queryApi.queryRows(q, observer);
 }
 
-//not fully working
 function apiRecentNoise(res){
+	/********************************************
+	NOTE: the way this query is being constructed
+	is NOT SECURE. The inputs are not verified &
+	are vulnerable to a code injection attack.
+	********************************************/
 	let obj = {noiseReading : []};
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
@@ -110,7 +115,21 @@ function apiRecentNoise(res){
 }
 
 function apiRecentMotion(res){
-	
+	/********************************************
+	NOTE: the way this query is being constructed
+	is NOT SECURE. The inputs are not verified &
+	are vulnerable to a code injection attack.
+	********************************************/
+	let obj = {motionReading : []};
+	let q = 
+		`from(bucket: "${config.influxDB.bucket}")
+		|> range(start: 0)
+		|> filter(fn: (r) => r._measurement == "motionReading")`;
+	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
+	if(u.searchParams.has('v'))q += `|> filter(fn: (r) => r._value == ${u.searchParams.get('v')})`;
+	q += `|> last()`;
+	const observer = makeObserver(res, obj);
+	queryApi.queryRows(q, observer);
 }
 
 function apiSince(u, res){
