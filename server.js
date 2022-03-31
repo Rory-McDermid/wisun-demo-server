@@ -53,7 +53,7 @@ function makeValueObserver(res, obj){
 	return {
 		next(row, tableMeta) {
 			const o = tableMeta.toObject(row)
-			obj.value = o._value;
+			obj.values.push({sensor: o.sensor, value: o._value});
 			//console.log(o);
 		},
 		complete(){
@@ -176,10 +176,10 @@ function apiNoiseAverage(u, res){
 		|> filter(fn: (r) => r._measurement == "noiseReading")`;
 	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
 	q += `
-		|> keep(columns: ["_value"])
+		|> keep(columns: ["_value", "sensor"])
 		|> mean()`;
 	//console.log(q);
-	let obj = {};
+	let obj = {values: []};
 	const observer = makeValueObserver(res, obj);
 	queryApi.queryRows(q, observer);
 }
@@ -196,11 +196,18 @@ function apiNoiseMax(u, res){
 		|> filter(fn: (r) => r._measurement == "noiseReading")`;
 	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
 	q += `
-		|> keep(columns: ["_value"])
+		|> keep(columns: ["_value", "sensor"])
 		|> max()`;
-	let obj = {};
+	let obj = {values: []};
 	const observer = makeValueObserver(res, obj);
 	queryApi.queryRows(q, observer);
+}
+
+function apiGroup(u, res){
+	let q = `from(bucket: "mock_II")
+	|> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "noiseReading")
+  |> aggregateWindow(every: 30s, fn: mean, createEmpty: false)`
 }
 
 function optionsResponse(res){
@@ -213,10 +220,10 @@ function optionsResponse(res){
 const server = http.createServer((req, res) => {
 	res.statusCode = 200;
 	if(req.method == 'OPTIONS')optionsResponse(res);
-	else if(req.url == '/')sendFile('index.html', res);
+	else if(req.url == '/')sendFile(config.server.index, res);
 	else if(req.url.startsWith('/api/'))apiReq(req.url, res);
 	else{
-		sendFile('static' + req.url, res);
+		sendFile(config.server.files + req.url, res);
 	}
 });
 
