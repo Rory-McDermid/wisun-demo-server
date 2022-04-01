@@ -12,6 +12,36 @@ const client = new InfluxDB({url: config.influxDB.url, token: config.influxDB.to
 
 queryApi = client.getQueryApi(config.influxDB.org);
 
+regex_sensor = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
+regex_nValue = /^-?([0-9]*[.])?[0-9]+$/;
+regex_mValue = /^[01]$/;
+regex_time = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?$/
+regex_reading = /^(motionReading)|(noiseReading)$/;
+regex_int = /^\d*[1-9]\d*$/;
+
+function validateInput(u){
+	v = false;
+	if(u.searchParams.has('s') && !(regex_sensor.test(u.searchParams.get('s'))))
+		v = `invalid sensor: ${u.searchParams.get('s')}`;
+	if(u.searchParams.has('t') && !(regex_time.test(u.searchParams.get('t'))))
+		v = `invalid time(t): ${u.searchParams.get('t')}`;
+	if(u.searchParams.has('start') && !(regex_time.test(u.searchParams.get('start'))))
+		v = `invalid time(start): ${u.searchParams.get('start')}`;
+	if(u.searchParams.has('stop') && !(regex_time.test(u.searchParams.get('stop'))))
+		v = `invalid time(stop): ${u.searchParams.get('stop')}`;
+	if(u.searchParams.has('a') && !(regex_nValue.test(u.searchParams.get('a'))))
+		v = `invalid noise value(a): ${u.searchParams.get('a')}`;
+	if(u.searchParams.has('b') && !(regex_nValue.test(u.searchParams.get('b'))))
+		v = `invalid noise value(b): ${u.searchParams.get('b')}`;
+	if(u.searchParams.has('v') && !(regex_mValue.test(u.searchParams.get('v'))))
+		v = `invalid motion value: ${u.searchParams.get('v')}`;
+	if(u.searchParams.has('r') && !(regex_reading.test(u.searchParams.get('r'))))
+		v = `invalid reading: ${u.searchParams.get('r')}`;
+	if(u.searchParams.has('p') && !(regex_int.test(u.searchParams.get('p'))))
+		v = `invalid period: ${u.searchParams.get('p')}`;
+	return v;
+}
+
 //send file to client, used for static content
 function sendFile(fileLoc, res){
 	const ext = fileLoc.split('.').pop();
@@ -74,6 +104,11 @@ function makeValueObserver(res, obj){
 
 function apiReq(path, res){
 	u = new URL(path, `http://${config.server.hostname}`);
+	v = validateInput(u);
+	if(v){
+		send400err(v, res);
+		return;
+	}
 	res.setHeader('Access-Control-Allow-Origin', '*');
 	//console.log(u);
 	//call function for specific api endpoints
@@ -102,11 +137,6 @@ function apiRecent(res){
 }
 
 function apiRecentNoise(res){
-	/********************************************
-	NOTE: the way this query is being constructed
-	is NOT SECURE. The inputs are not verified &
-	are vulnerable to a code injection attack.
-	********************************************/
 	let obj = {noiseReading : []};
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
@@ -121,11 +151,6 @@ function apiRecentNoise(res){
 }
 
 function apiRecentMotion(res){
-	/********************************************
-	NOTE: the way this query is being constructed
-	is NOT SECURE. The inputs are not verified &
-	are vulnerable to a code injection attack.
-	********************************************/
 	let obj = {motionReading : []};
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
@@ -139,11 +164,6 @@ function apiRecentMotion(res){
 }
 
 function apiSince(u, res){
-	/********************************************
-	NOTE: the way this query is being constructed
-	is NOT SECURE. The inputs are not verified &
-	are vulnerable to a code injection attack.
-	********************************************/
 	let obj;
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
@@ -171,11 +191,6 @@ function apiSince(u, res){
 }
 
 function apiNoiseAverage(u, res){
-	/********************************************
-	NOTE: the way this query is being constructed
-	is NOT SECURE. The inputs are not verified &
-	are vulnerable to a code injection attack.
-	********************************************/
 	let q =
 		`from(bucket: "${config.influxDB.bucket}")
 		|> range(start: time(v: "${u.searchParams.get('start')}"), stop:${u.searchParams.has('stop')?'time(v: "'+u.searchParams.get('stop')+'")':'now()'})
@@ -191,11 +206,6 @@ function apiNoiseAverage(u, res){
 }
 
 function apiNoiseMax(u, res){
-	/********************************************
-	NOTE: the way this query is being constructed
-	is NOT SECURE. The inputs are not verified &
-	are vulnerable to a code injection attack.
-	********************************************/
 	let q =
 		`from(bucket: "${config.influxDB.bucket}")
 		|> range(start: time(v: "${u.searchParams.get('start')}"), stop:${u.searchParams.has('stop')?'time(v: "'+u.searchParams.get('stop')+'")':'now()'})
@@ -210,11 +220,6 @@ function apiNoiseMax(u, res){
 }
 
 function apiGroup(u, res){
-	/********************************************
-	NOTE: the way this query is being constructed
-	is NOT SECURE. The inputs are not verified &
-	are vulnerable to a code injection attack.
-	********************************************/
 	let obj;
 	let q = 
 		`from(bucket: "${config.influxDB.bucket}")
