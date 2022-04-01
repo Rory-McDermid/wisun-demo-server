@@ -3,6 +3,7 @@ const fs = require('fs');
 const url = require('url');
 
 var config = require('./config.json'); //load configuration file
+config.server.port = process.env.PORT || config.server.port
 
 //const readingTypes = ['noiseReading', 'motionReading'];
 
@@ -13,12 +14,16 @@ queryApi = client.getQueryApi(config.influxDB.org);
 
 //send file to client, used for static content
 function sendFile(fileLoc, res){
+	const ext = fileLoc.split('.').pop();
 	const stream = fs.createReadStream(fileLoc);
 	stream.on('error', (err) => {
 		res.writeHead(404, 'Not Found');
 		res.end('404');
 	});
-	res.setHeader('Content-Type', 'text/html');
+	if(ext == 'js')res.setHeader('Content-Type', 'text/javascript');
+	else if(ext == 'css')res.setHeader('Content-Type', 'text/css');
+	else if(ext == 'svg')res.setHeader('Content-Type', 'image/svg+xml');
+	else res.setHeader('Content-Type', 'text/html');
 	stream.pipe(res);
 }
 
@@ -78,6 +83,7 @@ function apiReq(path, res){
 	else if(u.pathname == '/api/since')apiSince(u, res);
 	else if(u.pathname == '/api/noiseReading/average')apiNoiseAverage(u, res);
 	else if(u.pathname == '/api/noiseReading/max')apiNoiseMax(u, res);
+	else if(u.pathname == '/api/grouped')apiGroup(u, res);
 	else{
 		send400err(`Unrecognised endpoint: ${u}`, res);
 	}
@@ -159,7 +165,7 @@ function apiSince(u, res){
 			noiseReading : [],
 			motionReading : []};
 	}
-	console.log(q);
+	//console.log(q);
 	const observer = makeObserver(res, obj);
 	queryApi.queryRows(q, observer);
 }
@@ -204,10 +210,36 @@ function apiNoiseMax(u, res){
 }
 
 function apiGroup(u, res){
-	let q = `from(bucket: "mock_II")
-	|> range(start: v.timeRangeStart, stop: v.timeRangeStop)
-  |> filter(fn: (r) => r["_measurement"] == "noiseReading")
-  |> aggregateWindow(every: 30s, fn: mean, createEmpty: false)`
+	/********************************************
+	NOTE: the way this query is being constructed
+	is NOT SECURE. The inputs are not verified &
+	are vulnerable to a code injection attack.
+	********************************************/
+	let obj;
+	let q = 
+		`from(bucket: "${config.influxDB.bucket}")
+		|> range(start: time(v: "${u.searchParams.get('t')}"))`;
+	if(u.searchParams.has('s'))q += `|> filter(fn: (r) => r.sensor == "${u.searchParams.get('s')}")`;
+	if(u.searchParams.has('r')){
+		if(u.searchParams.get('r')=='noiseReading'){
+			q += `|> filter(fn: (r) => r._measurement == "noiseReading")`;
+			obj = {noiseReading : []};
+		} else if(u.searchParams.get('r')=='motionReading'){
+			q += `|> filter(fn: (r) => r._measurement == "motionReading")`;
+			obj = {motionReading : []};
+		} else {
+			send400err('invalid reading paramenter', res);
+			return;
+		}
+	} else {
+		obj = {
+			noiseReading : [],
+			motionReading : []};
+	}
+	q += `|> aggregateWindow(every: ${u.searchParams.get('p')}s, fn: mean, createEmpty: false)`;
+	//console.log(q);
+	const observer = makeObserver(res, obj);
+	queryApi.queryRows(q, observer);
 }
 
 function optionsResponse(res){
